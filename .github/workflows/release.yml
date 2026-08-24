@@ -139,6 +139,8 @@ jobs:
           wheel="$RUNNER_TEMP/consumer/liquilens_airflow_provider-${GITHUB_REF_NAME#v}-py3-none-any.whl"
           python -m pip install "$wheel"
       - name: Verify installed provenance, discovery, and real DAG task
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           python -m scripts.check_core_provenance
           airflow db migrate
