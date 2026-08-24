@@ -21,9 +21,9 @@ def test_standard_provider_entry_point_loads() -> None:
 def test_airflow_provider_manager_discovers_distribution() -> None:
     manager = ProvidersManager()
     assert "liquilens-airflow-provider" in manager.providers
-    info, version = manager.providers["liquilens-airflow-provider"]
-    assert version == "0.1.0"
-    assert info["name"] == "LiquiLens Evidence"
-    assert info["operators"][0]["python-modules"] == [
+    provider = manager.providers["liquilens-airflow-provider"]
+    assert provider.version == "0.1.0"
+    assert provider.data["name"] == "LiquiLens Evidence"
+    assert provider.data["operators"][0]["python-modules"] == [
         "liquilens_airflow_provider.operators.evidence"
     ]
