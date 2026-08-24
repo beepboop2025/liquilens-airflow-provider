@@ -1,0 +1,147 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  attestations: write
+  contents: write
+  id-token: write
+
+jobs:
+  signed-release:
+    name: Signed release
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      AIRFLOW_HOME: ${{ github.workspace }}/.airflow-release
+      AIRFLOW__CORE__LOAD_EXAMPLES: "False"
+      AIRFLOW__CORE__UNIT_TEST_MODE: "True"
+      PIP_DISABLE_PIP_VERSION_CHECK: "1"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.11"
+          cache: pip
+      - name: Verify signed tag, signed commit, ancestry, and version
+        run: |
+          signer_file="ops/release/liquilens-airflow-provider.allowed_signers"
+          git -c gpg.format=ssh -c gpg.ssh.allowedSignersFile="$signer_file" \
+            verify-tag --raw "$GITHUB_REF_NAME"
+          release_commit="$(git rev-list -n 1 "$GITHUB_REF_NAME")"
+          git -c gpg.format=ssh -c gpg.ssh.allowedSignersFile="$signer_file" \
+            verify-commit --raw "$release_commit"
+          git fetch origin main --no-tags
+          git merge-base --is-ancestor "$release_commit" origin/main
+          python - <<'PY'
+          import os
+          import tomllib
+          from pathlib import Path
+
+          version = tomllib.loads(Path("pyproject.toml").read_text())["project"]["version"]
+          if os.environ["GITHUB_REF_NAME"] != f"v{version}":
+              raise SystemExit("tag and provider version differ")
+          PY
+      - name: Install exact runtime and test dependencies
+        run: |
+          python -m pip install \
+            "apache-airflow==3.3.1" \
+            --constraint \
+            "https://raw.githubusercontent.com/apache/airflow/constraints-3.3.1/constraints-3.11.txt"
+          python -m pip install --require-hashes \
+            -r constraints/liquilens-evidence-v0.14.0.txt
+          python -m pip install --no-deps -e .
+          python -m pip install \
+            build==1.5.0 \
+            jsonschema==4.26.0 \
+            pytest==9.1.1 \
+            ruff==0.16.4 \
+            twine==7.0.0
+      - name: Test, discover, execute DAG, and build
+        run: |
+          python -m scripts.check_core_provenance
+          ruff check .
+          ruff format --check .
+          pytest
+          airflow db migrate
+          python -m scripts.check_provider_discovery
+          python -m scripts.run_dag_smoke
+          source_date_epoch="$(git show -s --format=%ct HEAD)"
+          SOURCE_DATE_EPOCH="$source_date_epoch" python -m build
+          python -m twine check dist/*
+          (
+            cd dist
+            sha256sum -- *.whl *.tar.gz > SHA256SUMS
+          )
+      - name: Attest wheel and source distribution
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-path: |
+            dist/*.whl
+            dist/*.tar.gz
+      - name: Publish GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" dist/* \
+            --verify-tag \
+            --title "LiquiLens Airflow Provider ${GITHUB_REF_NAME#v}" \
+            --notes "Apache-2.0 Airflow 3 provider for offline, fail-closed verification of local LiquiLens evidence carriers. No data collection, network access, recommendations, ratings, or financial execution. Wheel and source distribution carry GitHub build-provenance attestations."
+
+  anonymous-consumer:
+    name: Anonymous clean install and DAG
+    needs: signed-release
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    permissions:
+      attestations: read
+      contents: read
+      id-token: write
+    env:
+      AIRFLOW_HOME: ${{ github.workspace }}/.airflow-consumer
+      AIRFLOW__CORE__LOAD_EXAMPLES: "False"
+      AIRFLOW__CORE__UNIT_TEST_MODE: "True"
+      PIP_DISABLE_PIP_VERSION_CHECK: "1"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.11"
+      - name: Download public release assets without credentials
+        run: |
+          consumer_dir="$RUNNER_TEMP/consumer"
+          mkdir -p "$consumer_dir"
+          base_url="https://github.com/$GITHUB_REPOSITORY/releases/download/$GITHUB_REF_NAME"
+          wheel="liquilens_airflow_provider-${GITHUB_REF_NAME#v}-py3-none-any.whl"
+          curl --fail --location --retry 5 --retry-all-errors \
+            --output "$consumer_dir/$wheel" "$base_url/$wheel"
+          curl --fail --location --retry 5 --retry-all-errors \
+            --output "$consumer_dir/SHA256SUMS" "$base_url/SHA256SUMS"
+          (
+            cd "$consumer_dir"
+            grep " $wheel$" SHA256SUMS | sha256sum --check --strict
+          )
+      - name: Install exact public wheel into a clean environment
+        run: |
+          python -m pip install \
+            "apache-airflow==3.3.1" \
+            --constraint \
+            "https://raw.githubusercontent.com/apache/airflow/constraints-3.3.1/constraints-3.11.txt"
+          wheel="$RUNNER_TEMP/consumer/liquilens_airflow_provider-${GITHUB_REF_NAME#v}-py3-none-any.whl"
+          python -m pip install "$wheel"
+      - name: Verify installed provenance, discovery, and real DAG task
+        run: |
+          python -m scripts.check_core_provenance
+          airflow db migrate
+          python -m scripts.check_provider_discovery
+          python -m scripts.run_dag_smoke
+          gh attestation verify \
+            "$RUNNER_TEMP/consumer/liquilens_airflow_provider-${GITHUB_REF_NAME#v}-py3-none-any.whl" \
+            --repo "$GITHUB_REPOSITORY"

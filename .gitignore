@@ -4,7 +4,6 @@
 /.venv/
 /build/
 /dist/
-/*.egg-info/
+*.egg-info/
 __pycache__/
 *.py[cod]
-
