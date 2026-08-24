@@ -21,6 +21,7 @@ jobs:
     timeout-minutes: 20
     env:
       AIRFLOW_HOME: ${{ github.workspace }}/.airflow
+      AIRFLOW__CORE__DAGS_FOLDER: ${{ github.workspace }}/tests/dags
       AIRFLOW__CORE__LOAD_EXAMPLES: "False"
       AIRFLOW__CORE__UNIT_TEST_MODE: "True"
       PIP_DISABLE_PIP_VERSION_CHECK: "1"
@@ -65,4 +66,3 @@ jobs:
           airflow db migrate
           python -m scripts.check_provider_discovery
           python -m scripts.run_dag_smoke
-
