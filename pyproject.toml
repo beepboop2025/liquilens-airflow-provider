@@ -1,0 +1,73 @@
+[build-system]
+requires = ["setuptools==84.0.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "liquilens-airflow-provider"
+version = "0.1.0"
+description = "Apache Airflow 3 provider for fail-closed LiquiLens evidence verification"
+readme = "README.md"
+license = "Apache-2.0"
+license-files = ["LICENSE", "NOTICE"]
+requires-python = ">=3.11,<3.15"
+authors = [{name = "LiquiLens"}]
+keywords = [
+    "airflow",
+    "airflow-provider",
+    "financial-evidence",
+    "provenance",
+    "liquilens",
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Framework :: Apache Airflow",
+    "Framework :: Apache Airflow :: Provider",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Financial and Insurance Industry",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+    "Typing :: Typed",
+]
+dependencies = [
+    "apache-airflow>=3.0.0,<4.0.0",
+    "liquilens-evidence @ https://github.com/beepboop2025/liquilens-evidence-carrier/releases/download/v0.14.0/liquilens_evidence-0.14.0-py3-none-any.whl#sha256=f0162affab57307c8e20acf91dcefc33840f91e8cf9969a8d5ec8d8df860cd24",
+]
+
+[project.urls]
+Homepage = "https://liquilens.in/protocol/"
+Documentation = "https://github.com/beepboop2025/liquilens-airflow-provider#readme"
+Repository = "https://github.com/beepboop2025/liquilens-airflow-provider"
+Issues = "https://github.com/beepboop2025/liquilens-airflow-provider/issues"
+
+[project.entry-points."apache_airflow_provider"]
+provider_info = "liquilens_airflow_provider.get_provider_info:get_provider_info"
+
+[project.optional-dependencies]
+dev = [
+    "build==1.5.0",
+    "jsonschema==4.26.0",
+    "pytest==9.1.1",
+    "ruff==0.16.4",
+    "twine==7.0.0",
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+liquilens_airflow_provider = ["py.typed"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
+
+[tool.ruff]
+target-version = "py311"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM"]
+

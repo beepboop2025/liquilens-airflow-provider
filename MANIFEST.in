@@ -1,0 +1,7 @@
+include CHANGELOG.md
+include SECURITY.md
+recursive-include constraints *.txt
+recursive-include ops *.allowed_signers
+recursive-include scripts *.py
+recursive-include tests *.py *.json
+
